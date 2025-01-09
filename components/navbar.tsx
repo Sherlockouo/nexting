@@ -3,14 +3,13 @@
 import {
   Navbar as NextUINavbar,
   NavbarContent,
-  NavbarMenu,
   NavbarMenuToggle,
   NavbarBrand,
   NavbarItem,
+  NavbarMenu,
   NavbarMenuItem,
 } from "@nextui-org/navbar";
 import { Kbd } from "@nextui-org/kbd";
-import { Link } from "@nextui-org/link";
 import { Input } from "@nextui-org/input";
 import { link as linkStyles } from "@nextui-org/theme";
 import NextLink from "next/link";
@@ -22,6 +21,7 @@ import {
   DropdownMenu,
   DropdownItem,
 } from "@nextui-org/dropdown";
+import Link from "next/link";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
@@ -96,8 +96,10 @@ export const Navbar = () => {
             <DropdownMenu aria-label="Static Actions">
               {siteConfig.navMenuItems.map((item) => (
                 <DropdownItem key={item.label}>
-                  {item.label}
-                  
+                  <div className={"flex gap-2 items-center "}>
+                    <item.icon />
+                    <div>{item.label}</div>
+                  </div>
                 </DropdownItem>
               ))}
             </DropdownMenu>
@@ -113,7 +115,7 @@ export const Navbar = () => {
       <NavbarMenu>
         {searchInput}
         <div className="mx-4 mt-2 flex flex-col gap-2">
-          {siteConfig.navMenuItems.map((item, index) => (
+          {siteConfig.navItems.map((item, index) => (
             <NavbarMenuItem key={`${item}-${index}`}>
               <Link
                 color={
@@ -124,7 +126,6 @@ export const Navbar = () => {
                       : "foreground"
                 }
                 href="#"
-                size="lg"
               >
                 {item.label}
               </Link>
