@@ -148,26 +148,25 @@ export const useChatStore = create<ChatState>()(
           }),
         })),
       switchProviderAndModel: (provider, model) => {
-        const { providers } = get();
+        const { providers, sessions } = get();
         const providerConfig = providers.find((p) => p.id === provider);
 
         if (!providerConfig || !providerConfig.models.includes(model)) {
           return;
         }
 
-        const initialMsg = initialMessage;
-        const newSession: Session = {
-          id: uuidv4(),
-          title: `${providerConfig.name} - ${model} Chat`,
-          provider,
-          model,
-          messages: [initialMsg],
-        };
+        const currentSession = sessions.find(
+          (s) => s.id === get().currentSessionId,
+        );
 
-        set((state) => ({
-          sessions: [...state.sessions, newSession],
-          currentSessionId: newSession.id,
-        }));
+        // 如果当前会话存在，则更新 provider 和 model
+        if (currentSession) {
+          currentSession.provider = provider;
+          currentSession.model = model;
+
+          // 更新状态
+          set({ sessions: [...sessions] });
+        }
       },
       // 清空某个 Session 的消息（也可删除整个 Session）
       clearSessionMessages: (sessionId) => {
