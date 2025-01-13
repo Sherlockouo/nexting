@@ -7,7 +7,11 @@ import { IconMicrophoneFilled } from "@tabler/icons-react";
 import MessageItem from "./MessageItem";
 import ModelSwitcher from "./ModelSwitcher";
 
-import { useChatStore } from "@/store/useChatStore";
+import { createMessage, Message, useChatStore } from "@/store/useChatStore";
+import { getClientApi } from "@/app/client/api"; // 根据你的文件结构调整导入路径
+import { ChatControllerPool } from "@/app/client/controller";
+import { ServiceProvider } from "@/consts/constant";
+import { prettyObject } from "@/lib/format";
 
 export default function ChatPanel() {
   const [input, setInput] = useState("");
@@ -29,95 +33,148 @@ export default function ChatPanel() {
     }
   };
 
-  useEffect(() => {
-    if (!isUserScrolled) {
-      scrollToTarget();
-    }
-  }, [input, isUserScrolled]);
-
   const {
     sessions,
     currentSessionId,
     addMessage,
     addMessageContent,
     clearSessionMessages,
-    selectedModel,
+    onNewMessage, // 确保这个方法已经定义
+    updateTargetSession, // 确保这个方法已经定义
   } = useChatStore();
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
+
+  useEffect(() => {
+    if (!isUserScrolled) {
+      scrollToTarget();
+    }
+  }, []);
 
   if (!currentSession) {
     return <div className="flex-1 p-4">No session selected.</div>;
   }
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!input.trim()) return;
 
     const userContent = input.trim();
 
     setInput("");
+
+    // 获取当前会话的配置
+    const modelConfig = {
+      providerName: currentSession.provider,
+      model: currentSession.model,
+      temperature: 0.7, // 根据需要设置
+      // 其他配置参数
+    };
+
+    console.log("sonfig", modelConfig);
+
+    const api = getClientApi(modelConfig.providerName as ServiceProvider);
+
+    // 准备 messages
+    const sendMessages = currentSession.messages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    let userMessage: Message = createMessage({
+      role: "user",
+      content: userContent,
+    });
+
+    const botMessage: Message = createMessage({
+      role: "assistant",
+      streaming: true,
+      model: modelConfig.model,
+    });
+
     addMessage(currentSession.id, "user", userContent);
-    if (!isUserScrolled) {
-      scrollToTarget();
-    }
+    sendMessages.push(userMessage);
+    // 添加 botMessage 到当前会话的消息中
+    addMessage(currentSession.id, "assistant", botMessage.content);
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: currentSession.messages.concat({
-            role: "user",
-            content: userContent,
-          }),
-        }),
-      });
+    api.llm.chat({
+      messages: sendMessages,
+      config: { ...modelConfig, stream: true },
+      onUpdate: (message) => {
+        if (message) {
+          const trimmed = message.trim();
 
-      if (!response.body) return;
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-
-      addMessage(currentSession.id, "assistant", "");
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-
-        done = readerDone;
-        if (!value) continue;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-
-          if (!trimmed.startsWith("data:")) continue;
-          const jsonStr = trimmed.replace("data:", "").trim();
-
-          if (jsonStr === "[DONE]") {
-            done = true;
-            break;
+          if (trimmed === "[DONE]") {
+            return;
           }
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
+          const msg = JSON.parse(message);
 
-            if (content) {
-              addMessageContent(currentSession.id, content);
-              if (!isUserScrolled) {
-                scrollToTarget();
-              }
-            }
-          } catch (err) {
-            console.error("Error parsing JSON stream chunk:", err);
+          const content_chunk = msg.choices?.[0]?.delta?.content;
+
+          botMessage.content += content_chunk;
+          addMessageContent(currentSession.id, content_chunk);
+          if (!isUserScrolled) {
+            scrollToTarget();
           }
         }
-      }
-    } catch (err) {
-      console.error("Error while sending message:", err);
-    }
+      },
+      onFinish: (message) => {
+        if (message) {
+          botMessage.content = message;
+          botMessage.date = new Date().toLocaleString();
+          // 通知新消息
+          onNewMessage(botMessage, currentSession);
+        }
+        // 移除控制器
+        ChatControllerPool.remove(currentSession.id, botMessage.id);
+      },
+      onBeforeTool: (tool) => {
+        // 处理工具调用前的逻辑
+        (botMessage.tools = botMessage.tools || []).push(tool);
+        // 更新会话消息
+        updateTargetSession(currentSession, (session) => {
+          session.messages = session.messages.concat();
+        });
+      },
+      onAfterTool: (tool) => {
+        // 处理工具调用后的逻辑
+        if (botMessage.tools) {
+          botMessage.tools.forEach((t, i, tools) => {
+            if (tool.id === t.id) {
+              tools[i] = { ...tool };
+            }
+          });
+        }
+        // 更新会话消息
+        updateTargetSession(currentSession, (session) => {
+          session.messages = session.messages.concat();
+        });
+      },
+      onError: (error) => {
+        const isAborted = error.message?.includes("aborted");
+
+        botMessage.content +=
+          "\n\n" + prettyObject({ error: true, message: error.message });
+        botMessage.streaming = false;
+        // 设置错误标志
+        userMessage.isError = !isAborted;
+        botMessage.isError = !isAborted;
+        // 更新会话消息
+        updateTargetSession(currentSession, (session) => {
+          session.messages = session.messages.concat();
+        });
+        // 移除控制器
+        ChatControllerPool.remove(currentSession.id, botMessage.id);
+        console.error("[Chat] failed ", error);
+      },
+      onController: (controller) => {
+        // 收集控制器
+        ChatControllerPool.addController(
+          currentSession.id,
+          botMessage.id,
+          controller,
+        );
+      },
+    });
   };
 
   const handleClear = () => {
@@ -142,7 +199,7 @@ export default function ChatPanel() {
         }}
       >
         {currentSession.messages.map((msg, idx) => (
-          <MessageItem key={idx} content={msg.content} role={msg.role} />
+          <MessageItem key={idx} {...msg} />
         ))}
         <div ref={scrollRef} />
       </Card>

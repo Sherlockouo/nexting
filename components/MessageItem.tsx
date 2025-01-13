@@ -3,12 +3,9 @@
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import { useTheme } from "next-themes";
 
-type ChatMessageProps = {
-  role: string;
-  content: string;
-};
+import { Message } from "@/store/useChatStore";
 
-export default function MessageItem({ role, content }: ChatMessageProps) {
+export default function MessageItem({ role, content }: Message) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 

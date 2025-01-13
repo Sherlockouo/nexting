@@ -2,27 +2,42 @@
 
 import { Select, SelectItem } from "@nextui-org/react";
 
+// ModelSwitcher 组件
 import { useChatStore } from "@/store/useChatStore";
 
-export default function ModelSwitcher() {
-  const { models, selectedModel, switchModel } = useChatStore();
+function ModelSwitcher() {
+  const { providers, switchProviderAndModel } = useChatStore();
+
+  const providerModelCombinations = providers.flatMap((provider) =>
+    provider.models.map((model) => ({
+      provider: provider.id,
+      model,
+      label: `${provider.name} - ${model}`,
+    })),
+  );
 
   return (
     <Select
-      className="w-1/3"
-      label="Select Model"
-      placeholder="Select a model"
-      // 由于 selectedKeys 接收的是 Iterable，如 Set / Array，这里要传入数组
-      selectedKeys={selectedModel ? [selectedModel] : []}
-      onSelectionChange={(keys) => {
-        const model = Array.from(keys)[0] as string;
+      defaultSelectedKeys={[providerModelCombinations[0].label]}
+      label="model select"
+      onChange={(e) => {
+        const selectedLabel = e.target.value;
+        const selectedCombo = providerModelCombinations.find(
+          (c) => c.label === selectedLabel,
+        );
 
-        switchModel(model);
+        if (selectedCombo) {
+          switchProviderAndModel(selectedCombo.provider, selectedCombo.model);
+        }
       }}
     >
-      {models.map((model) => (
-        <SelectItem key={model}>{model}</SelectItem>
+      {providerModelCombinations.map((combo) => (
+        <SelectItem key={combo.label} value={combo.label}>
+          {combo.label}
+        </SelectItem>
       ))}
     </Select>
   );
 }
+
+export default ModelSwitcher;

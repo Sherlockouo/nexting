@@ -1,3 +1,4 @@
+import { DEFAULT_MODELS } from "./models";
 
 export const OPENAI_BASE_URL = "https://api.openai.com";
 export const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/";
@@ -6,7 +7,6 @@ export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 export const CACHE_URL_PREFIX = "/api/cache";
 export const UPLOAD_URL = `${CACHE_URL_PREFIX}/upload`;
-
 
 export const REQUEST_TIMEOUT_MS = 60000;
 
@@ -36,3 +36,18 @@ export const DeepSeek = {
   ExampleEndpoint: DEEPSEEK_BASE_URL,
   ChatPath: "chat/completions",
 };
+
+export enum ServiceProvider {
+  Gemini = "Gemini",
+  Moonshot = "Moonshot",
+  DeepSeek = "DeepSeek",
+}
+
+export enum ModelProvider {
+  GPT = "GPT",
+  GeminiPro = "GeminiPro",
+  Moonshot = "Moonshot",
+  DeepSeek = "DeepSeek",
+}
+
+export type ModelType = (typeof DEFAULT_MODELS)[number]["name"];

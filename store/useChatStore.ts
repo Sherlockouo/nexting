@@ -4,23 +4,51 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 
+import { ModelType } from "@/consts/constant";
+import { ChatMessageTool } from "@/types/llm/chat";
+
 export interface Message {
+  id: string;
   role: "system" | "user" | "assistant";
   content: string;
+  streaming?: boolean;
+  model?: ModelType;
+  date: string;
+  isError?: boolean;
+
+  tools?: ChatMessageTool[];
+}
+
+export interface Provider {
+  id: string;
+  name: string;
+  models: string[];
 }
 
 export interface Session {
   id: string;
   title: string;
+  provider: string;
   model: string;
   messages: Message[];
+}
+
+export function createMessage(override: Partial<Message>): Message {
+  return {
+    id: uuidv4(),
+    date: new Date().toLocaleString(),
+    role: "user",
+    content: "",
+    ...override,
+  };
 }
 
 interface ChatState {
   sessions: Session[];
   currentSessionId: string | null;
-  models: string[]; // 可选模型列表
-  selectedModel: string; // 当前选中模型
+  providers: Provider[];
+  selectedProvider: string;
+  selectedModel: string;
 
   createSession: () => void;
   setCurrentSessionId: (sessionId: string) => void;
@@ -29,10 +57,15 @@ interface ChatState {
     role: Message["role"],
     content: string,
   ) => void;
+  onNewMessage: (botMessage: Message, session: Session) => void;
+  updateTargetSession: (
+    sessionId: Session,
+    updater: (session: Session) => void,
+  ) => void;
   addMessageContent: (sessionId: string, contentChunk: string) => void;
   deleteSession: (sessionId: string) => void;
   clearSessionMessages: (sessionId: string) => void;
-  switchModel: (model: string) => void;
+  switchProviderAndModel: (provider: string, model: string) => void;
   updateSessionTitle: (sessionId: string, newTitle: string) => void;
 }
 
@@ -44,8 +77,11 @@ export const useChatStore = create<ChatState>()(
       sessions: [],
       currentSessionId: null,
 
-      // 这里可以自定义模型列表
-      models: ["gpt-3.5-turbo", "gpt-4"],
+      providers: [
+        { id: "Deepseek", name: "DeepSeek", models: ["deepseek-chat"] },
+        { id: "Gemini", name: "Gemini", models: ["gemini-1.5-pro-latest"] },
+      ],
+      selectedProvider: "Deepseek",
       selectedModel: "gpt-3.5-turbo",
 
       // 创建新 Session
@@ -53,6 +89,7 @@ export const useChatStore = create<ChatState>()(
         const newSession: Session = {
           id: uuidv4(),
           title: "New Chat",
+          provider: "Deepseek",
           model: get().selectedModel, // 默认使用当前选中模型
           messages: [
             { role: "system", content: "You are ChatGPT." }, // system 提示
@@ -110,6 +147,28 @@ export const useChatStore = create<ChatState>()(
             return session;
           }),
         })),
+      switchProviderAndModel: (provider, model) => {
+        const { providers } = get();
+        const providerConfig = providers.find((p) => p.id === provider);
+
+        if (!providerConfig || !providerConfig.models.includes(model)) {
+          return;
+        }
+
+        const initialMsg = initialMessage;
+        const newSession: Session = {
+          id: uuidv4(),
+          title: `${providerConfig.name} - ${model} Chat`,
+          provider,
+          model,
+          messages: [initialMsg],
+        };
+
+        set((state) => ({
+          sessions: [...state.sessions, newSession],
+          currentSessionId: newSession.id,
+        }));
+      },
       // 清空某个 Session 的消息（也可删除整个 Session）
       clearSessionMessages: (sessionId) => {
         set((state) => {
@@ -126,13 +185,6 @@ export const useChatStore = create<ChatState>()(
 
           return { sessions };
         });
-      },
-
-      // 切换全局模型（同时也可以根据需求去更新当前 Session 的 model）
-      switchModel: (model) => {
-        set(() => ({
-          selectedModel: model,
-        }));
       },
       deleteSession: (sessionId: string) => {
         set((state) => ({
@@ -161,7 +213,44 @@ export const useChatStore = create<ChatState>()(
           return { sessions };
         });
       },
+      onNewMessage: (botMessage: Message, session: Session) => {
+        set((state) => {
+          const sessions = state.sessions.map((s) => {
+            if (s.id === session.id) {
+              return {
+                ...s,
+                messages: [...s.messages, botMessage],
+              };
+            }
+
+            return s;
+          });
+
+          return { sessions };
+        });
+      },
+      updateTargetSession: (
+        sessionId: Session,
+        updater: (session: Session) => void,
+      ) => {
+        set((state) => {
+          const sessions = state.sessions.map((s) => {
+            if (s.id === sessionId) {
+              const updatedSession = { ...s };
+
+              updater(updatedSession);
+
+              return updatedSession;
+            }
+
+            return s;
+          });
+
+          return { sessions };
+        });
+      },
     }),
+
     {
       name: "chat-storage", // 存储到 localStorage 的 key
     },
