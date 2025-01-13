@@ -37,6 +37,10 @@ export const siteConfig: SiteConfig = {
       href: "/chat",
     },
     {
+      label: "Talk",
+      href: "/talk",
+    },
+    {
       label: "About",
       href: "/about",
     },

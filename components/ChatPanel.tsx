@@ -12,19 +12,28 @@ import { useChatStore } from "@/store/useChatStore";
 export default function ChatPanel() {
   const [input, setInput] = useState("");
   const [voiceOn, setVoiceOn] = useState(false);
-  const [needScroll, setNeedScroll] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null); // 定义 ref
+  const [isUserScrolled, setIsUserScrolled] = useState(false);
+  const [isProgrammaticScroll, setIsProgrammaticScroll] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 滚动到目标元素的函数
   const scrollToTarget = () => {
-    if (scrollRef.current && needScroll) {
+    if (scrollRef.current) {
+      setIsProgrammaticScroll(true);
       scrollRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Reset the flag after the scroll animation completes
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsProgrammaticScroll(false);
+        });
+      });
     }
   };
 
   useEffect(() => {
-    setNeedScroll(true);
-  }, [input]);
+    if (!isUserScrolled) {
+      scrollToTarget();
+    }
+  }, [input, isUserScrolled]);
 
   const {
     sessions,
@@ -37,7 +46,6 @@ export default function ChatPanel() {
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
 
-  // 如果没有选中 Session，提示用户创建/选择
   if (!currentSession) {
     return <div className="flex-1 p-4">No session selected.</div>;
   }
@@ -48,11 +56,11 @@ export default function ChatPanel() {
     const userContent = input.trim();
 
     setInput("");
-
-    // 1. 先将用户消息添加到状态
     addMessage(currentSession.id, "user", userContent);
+    if (!isUserScrolled) {
+      scrollToTarget();
+    }
 
-    // 2. 向后端接口发起请求，流式获取 AI 消息
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -71,10 +79,8 @@ export default function ChatPanel() {
       const decoder = new TextDecoder();
       let done = false;
 
-      // 先添加一条空的 assistant 消息，用来接收后续流式内容
       addMessage(currentSession.id, "assistant", "");
 
-      // 流式读取
       while (!done) {
         const { value, done: readerDone } = await reader.read();
 
@@ -99,10 +105,10 @@ export default function ChatPanel() {
             const content = parsed.choices?.[0]?.delta?.content;
 
             if (content) {
-              // 将流回来的内容添加到之前的最后一条 assistant 消息上
-              // （这里可以重新写一个专门的 store 函数更好）
               addMessageContent(currentSession.id, content);
-              scrollToTarget();
+              if (!isUserScrolled) {
+                scrollToTarget();
+              }
             }
           } catch (err) {
             console.error("Error parsing JSON stream chunk:", err);
@@ -120,23 +126,27 @@ export default function ChatPanel() {
 
   return (
     <div className="flex-1 flex flex-col justify-center px-1">
-      {/* 消息列表 */}
       <Card
         className="w-full my-2 h-[70vh] flex-3 overflow-y-auto no-scrollbar"
-        onScroll={() => {
-          console.log("scrolling...");
-          setNeedScroll(false);
+        onScroll={(e) => {
+          if (!isProgrammaticScroll) {
+            const target = e.target as HTMLElement;
+            const { scrollTop, scrollHeight, clientHeight } = target;
+
+            if (scrollTop + clientHeight < scrollHeight - 10) {
+              setIsUserScrolled(true);
+            } else {
+              setIsUserScrolled(false);
+            }
+          }
         }}
       >
-        {currentSession.messages.map((msg, idx) => {
-          return (
-            <MessageItem key={idx} content={msg.content} role={msg.role} />
-          );
-        })}
+        {currentSession.messages.map((msg, idx) => (
+          <MessageItem key={idx} content={msg.content} role={msg.role} />
+        ))}
         <div ref={scrollRef} />
       </Card>
 
-      {/* 输入框区 */}
       <Card className="p-4 flex-1">
         <Textarea
           className="mb-4"
@@ -150,7 +160,7 @@ export default function ChatPanel() {
               !e.shiftKey &&
               !e.nativeEvent.isComposing
             ) {
-              e.preventDefault(); // Prevent newline
+              e.preventDefault();
               handleSend();
             }
           }}
