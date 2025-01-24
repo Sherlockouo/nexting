@@ -8,10 +8,11 @@ export default function ChatPage() {
   return (
     <div className="flex h-full w-full">
       {/* 左侧边栏 */}
-      <ChatSidebar />
-
+      <div className="flex-1 h-full w-full">
+        <ChatSidebar />
+      </div>
       {/* 右侧主内容区域 */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-9 flex flex-col w-full">
         <ChatPanel />
       </div>
     </div>

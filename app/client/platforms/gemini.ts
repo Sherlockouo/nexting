@@ -3,6 +3,12 @@ import { fetchEventSource } from "@fortaine/fetch-event-source";
 import { ChatOptions, LLMApi, LLMUsage, LLMModel } from "@/types/llm";
 import { FatalError, RetriableError } from "@/types/errors";
 
+interface GeminiModel {
+  id: string;
+  object: string;
+  owned_by: string;
+  created: number;
+}
 export class GeminiProApi extends LLMApi {
   constructor() {
     super();
@@ -52,6 +58,7 @@ export class GeminiProApi extends LLMApi {
           body: JSON.stringify(body),
           signal: signal,
           async onopen(response) {
+            console.log("open", response);
             if (
               response.ok
               // &&
@@ -115,8 +122,35 @@ export class GeminiProApi extends LLMApi {
   }
 
   async models(): Promise<LLMModel[]> {
-    // 实现 Gemini 的 models 方法，根据其 API 文档
-    // 假设返回一个固定模型列表，实际应发送请求获取
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_GEMINI_API_KEY}`,
+    };
+    const response = await fetch("https://gemini.larc.top/v1/models", {
+      headers,
+    });
+
+    if (response.ok) {
+      const res = await response.json();
+
+      return res.data.map((model: GeminiModel) => ({
+        name: model.id,
+        provider: {
+          id: "Geimini",
+          providerName: "Gemini",
+          providerType: "llm",
+          sorted: 2,
+        },
+        available: true,
+        sorted: 2,
+      }));
+    } else {
+      const errorData = await response.text();
+      const error = new Error(`Request failed: ${errorData}`);
+
+      console.error("[Gemini] fetch models error", error);
+    }
+
     return [
       {
         name: "gemini-1.5-pro-latest",

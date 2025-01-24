@@ -98,7 +98,7 @@ export const Navbar = () => {
                 <DropdownItem key={item.label}>
                   <div className={"flex gap-2 items-center "}>
                     <item.icon />
-                    <div>{item.label}</div>
+                    <Link href={item.href}>{item.label}</Link>
                   </div>
                 </DropdownItem>
               ))}
@@ -125,7 +125,7 @@ export const Navbar = () => {
                       ? "danger"
                       : "foreground"
                 }
-                href="#"
+                href={item.href}
               >
                 {item.label}
               </Link>

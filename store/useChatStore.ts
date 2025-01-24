@@ -6,7 +6,20 @@ import { v4 as uuidv4 } from "uuid";
 
 import { ModelType } from "@/consts/constant";
 import { ChatMessageTool } from "@/types/llm/chat";
+import { DeepSeekApi } from "@/app/client/platforms/deepseek";
+import { GeminiProApi } from "@/app/client/platforms/gemini";
 
+export interface Message {
+  id: string;
+  role: "system" | "user" | "assistant";
+  content: string;
+  streaming?: boolean;
+  model?: ModelType;
+  date: string;
+  isError?: boolean;
+
+  tools?: ChatMessageTool[];
+}
 export interface Message {
   id: string;
   role: "system" | "user" | "assistant";
@@ -59,17 +72,24 @@ interface ChatState {
   ) => void;
   onNewMessage: (botMessage: Message, session: Session) => void;
   updateTargetSession: (
-    sessionId: Session,
+    sessionId: string,
     updater: (session: Session) => void,
   ) => void;
   addMessageContent: (sessionId: string, contentChunk: string) => void;
   deleteSession: (sessionId: string) => void;
   clearSessionMessages: (sessionId: string) => void;
+  initializeModels: () => Promise<void>;
+  refreshModels: (providerId: string) => Promise<void>;
   switchProviderAndModel: (provider: string, model: string) => void;
   updateSessionTitle: (sessionId: string, newTitle: string) => void;
 }
 
-const initialMessage: Message = { role: "system", content: "You are ChatGPT." };
+const initialMessage: Message = {
+  id: uuidv4(),
+  role: "system",
+  content: "You are ChatGPT.",
+  date: new Date().toLocaleString(),
+};
 
 export const useChatStore = create<ChatState>()(
   persist(
@@ -82,7 +102,7 @@ export const useChatStore = create<ChatState>()(
         { id: "Gemini", name: "Gemini", models: ["gemini-1.5-pro-latest"] },
       ],
       selectedProvider: "Deepseek",
-      selectedModel: "gpt-3.5-turbo",
+      selectedModel: "deepseek-chat",
 
       // 创建新 Session
       createSession: () => {
@@ -91,9 +111,7 @@ export const useChatStore = create<ChatState>()(
           title: "New Chat",
           provider: "Deepseek",
           model: get().selectedModel, // 默认使用当前选中模型
-          messages: [
-            { role: "system", content: "You are ChatGPT." }, // system 提示
-          ],
+          messages: [initialMessage],
         };
 
         set((state) => ({
@@ -114,7 +132,10 @@ export const useChatStore = create<ChatState>()(
             if (session.id === sessionId) {
               return {
                 ...session,
-                messages: [...session.messages, { role, content }],
+                messages: [
+                  ...session.messages,
+                  createMessage({ role, content }),
+                ],
               };
             }
 
@@ -147,6 +168,46 @@ export const useChatStore = create<ChatState>()(
             return session;
           }),
         })),
+      // 初始化模型数据
+      initializeModels: async () => {
+        // await get().refreshModels("Deepseek");
+        await get().refreshModels("Gemini");
+        // 可以添加其他provider的初始化
+      },
+      // 刷新指定provider的模型列表
+      refreshModels: async (providerId) => {
+        try {
+          let models: string[] = [];
+
+          if (providerId === "Deepseek") {
+            const api = new DeepSeekApi();
+            const result = await api.models();
+
+            models = result.map((m) => m.name);
+          }
+          if (providerId === "Gemini") {
+            const api = new GeminiProApi();
+            const result = await api.models();
+
+            models = result.map((m) => m.name);
+          }
+          if (models.length < 1) {
+            console.warn(`[Store] No models found for ${providerId}`);
+
+            return;
+          }
+          set((state) => ({
+            providers: state.providers.map((p) =>
+              p.id === providerId ? { ...p, models } : p,
+            ),
+          }));
+        } catch (error) {
+          console.error(
+            `[Store] Failed to refresh ${providerId} models:`,
+            error,
+          );
+        }
+      },
       switchProviderAndModel: (provider, model) => {
         const { providers, sessions } = get();
         const providerConfig = providers.find((p) => p.id === provider);
@@ -229,7 +290,7 @@ export const useChatStore = create<ChatState>()(
         });
       },
       updateTargetSession: (
-        sessionId: Session,
+        sessionId: string,
         updater: (session: Session) => void,
       ) => {
         set((state) => {

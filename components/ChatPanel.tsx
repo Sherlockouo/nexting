@@ -110,6 +110,11 @@ export default function ChatPanel() {
 
           const content_chunk = msg.choices?.[0]?.delta?.content;
 
+          if (content_chunk === "null") {
+            console.log("model is reasoning...");
+
+            return;
+          }
           botMessage.content += content_chunk;
           addMessageContent(currentSession.id, content_chunk);
           if (!isUserScrolled) {
@@ -131,7 +136,7 @@ export default function ChatPanel() {
         // 处理工具调用前的逻辑
         (botMessage.tools = botMessage.tools || []).push(tool);
         // 更新会话消息
-        updateTargetSession(currentSession, (session) => {
+        updateTargetSession(currentSession.id, (session) => {
           session.messages = session.messages.concat();
         });
       },
@@ -145,7 +150,7 @@ export default function ChatPanel() {
           });
         }
         // 更新会话消息
-        updateTargetSession(currentSession, (session) => {
+        updateTargetSession(currentSession.id, (session) => {
           session.messages = session.messages.concat();
         });
       },
@@ -159,7 +164,7 @@ export default function ChatPanel() {
         userMessage.isError = !isAborted;
         botMessage.isError = !isAborted;
         // 更新会话消息
-        updateTargetSession(currentSession, (session) => {
+        updateTargetSession(currentSession.id, (session) => {
           session.messages = session.messages.concat();
         });
         // 移除控制器
@@ -184,7 +189,7 @@ export default function ChatPanel() {
   return (
     <div className="flex-1 flex flex-col justify-center px-1">
       <Card
-        className="w-full my-2 h-[70vh] flex-3 overflow-y-auto no-scrollbar"
+        className="w-full mb-2 h-[70vh] flex-7 overflow-y-auto no-scrollbar"
         onScroll={(e) => {
           if (!isProgrammaticScroll) {
             const target = e.target as HTMLElement;
@@ -199,12 +204,18 @@ export default function ChatPanel() {
         }}
       >
         {currentSession.messages.map((msg, idx) => (
-          <MessageItem key={idx} {...msg} />
+          <MessageItem
+            key={idx}
+            message={msg}
+            messageIdx={idx}
+            sessionId={currentSession.id}
+            showEtid={idx == 0}
+          />
         ))}
         <div ref={scrollRef} />
       </Card>
 
-      <Card className="p-4 flex-1">
+      <Card className="p-4 flex-3">
         <Textarea
           className="mb-4"
           maxRows={6}

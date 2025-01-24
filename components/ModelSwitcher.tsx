@@ -1,42 +1,86 @@
 "use client";
 
-import { Select, SelectItem } from "@nextui-org/react";
+import { Select, SelectItem, SharedSelection } from "@nextui-org/react";
+import { useEffect, useState } from "react";
 
-// ModelSwitcher 组件
 import { useChatStore } from "@/store/useChatStore";
 
 function ModelSwitcher() {
-  const { providers, switchProviderAndModel } = useChatStore();
+  const { providers, selectedProvider, selectedModel, switchProviderAndModel } =
+    useChatStore();
+  const [currentProvider, setCurrentProvider] = useState(selectedProvider);
+  const [currentModel, setCurrentModel] = useState(selectedModel);
 
-  const providerModelCombinations = providers.flatMap((provider) =>
-    provider.models.map((model) => ({
-      provider: provider.id,
-      model,
-      label: `${provider.name} - ${model}`,
-    })),
-  );
+  // Filter models based on the selected provider
+  const selectedProviderModels =
+    providers.find((p) => p.id === currentProvider)?.models || [];
+
+  // Set default model if currentModel is not in selectedProviderModels
+  useEffect(() => {
+    if (
+      !selectedProviderModels.includes(currentModel) &&
+      selectedProviderModels.length > 0
+    ) {
+      setCurrentModel(selectedProviderModels[0]);
+    }
+  }, [selectedProviderModels, currentModel]);
+
+  // Handle provider selection
+  const handleProviderChange = (keys: SharedSelection) => {
+    const providerId = keys;
+
+    if (providerId) {
+      console.log("provider: ", providerId, providers);
+      const selectedProvider = providers.find(
+        (p) => p.id === providerId.anchorKey,
+      );
+
+      if (selectedProvider) {
+        setCurrentProvider(selectedProvider.id);
+        setCurrentModel(selectedProvider.models[0]); // Set the first model of the provider
+        switchProviderAndModel(selectedProvider.id, selectedProvider.models[0]);
+      }
+    }
+  };
+
+  // Handle model selection
+  const handleModelChange = (keys: SharedSelection) => {
+    const model = keys;
+
+    if (model.anchorKey) {
+      setCurrentModel(model.anchorKey);
+      switchProviderAndModel(currentProvider, model.anchorKey);
+    }
+  };
 
   return (
-    <Select
-      defaultSelectedKeys={[providerModelCombinations[0].label]}
-      label="model select"
-      onChange={(e) => {
-        const selectedLabel = e.target.value;
-        const selectedCombo = providerModelCombinations.find(
-          (c) => c.label === selectedLabel,
-        );
+    <div className="flex w-full gap-2">
+      <Select
+        label="Provider"
+        selectedKeys={new Set([currentProvider])}
+        onSelectionChange={handleProviderChange}
+      >
+        {providers &&
+          providers.map((provider) => (
+            <SelectItem key={provider.id} value={provider.id}>
+              {provider.name}
+            </SelectItem>
+          ))}
+      </Select>
 
-        if (selectedCombo) {
-          switchProviderAndModel(selectedCombo.provider, selectedCombo.model);
-        }
-      }}
-    >
-      {providerModelCombinations.map((combo) => (
-        <SelectItem key={combo.label} value={combo.label}>
-          {combo.label}
-        </SelectItem>
-      ))}
-    </Select>
+      <Select
+        label="Model"
+        selectedKeys={new Set([currentModel])}
+        onSelectionChange={handleModelChange}
+      >
+        {selectedProviderModels &&
+          selectedProviderModels.map((model) => (
+            <SelectItem key={model} value={model}>
+              {model}
+            </SelectItem>
+          ))}
+      </Select>
+    </div>
   );
 }
 
